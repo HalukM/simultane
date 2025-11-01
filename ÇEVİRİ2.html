@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simultane Çeviri (Web, Tek Dosya)</title>
+  <style>
+    :root{--bg:#0f172a;--card:#111827;--muted:#94a3b8;--text:#e5e7eb;--accent:#22c55e;--danger:#ef4444;--warn:#f59e0b}
+    *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,"Apple Color Emoji","Segoe UI Emoji";background:var(--bg);color:var(--text)}
+    .wrap{max-width:960px;margin:0 auto;padding:20px}
+    .title{font-size:clamp(20px,3.5vw,36px);font-weight:800;letter-spacing:.2px;margin:4px 0 14px}
+    .subtitle{color:var(--muted);margin-bottom:16px}
+    .grid{display:grid;gap:14px}
+    @media(min-width:900px){.grid{grid-template-columns:1fr 1fr}}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,0.04),rgba(255,255,255,0.02));border:1px solid rgba(148,163,184,.18);border-radius:18px;padding:14px 14px 10px}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    label{font-size:12px;color:var(--muted)}
+    select,input[type="text"],input[type="password"],input[type="url"],textarea{background:#0b1220;border:1px solid rgba(148,163,184,.3);color:var(--text);padding:10px 12px;border-radius:12px;outline:none;width:100%}
+    select:focus,input:focus,textarea:focus{border-color:#60a5fa;box-shadow:0 0 0 3px rgba(96,165,250,.15)}
+    button{appearance:none;border:none;border-radius:14px;padding:12px 14px;font-weight:700;cursor:pointer;transition:.18s transform ease,.18s opacity ease;display:inline-flex;gap:8px;align-items:center}
+    button:hover{transform:translateY(-1px)}
+    .primary{background:var(--accent);color:#001a09}
+    .danger{background:var(--danger);color:white}
+    .ghost{background:#0b1220;color:#cbd5e1;border:1px solid rgba(148,163,184,.3)}
+    .warn{background:var(--warn);color:#1f1300}
+    .pill{font-size:12px;padding:6px 10px;border-radius:999px;background:#0b1220;border:1px solid rgba(148,163,184,.25);color:#cbd5e1}
+    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace}
+    .flex-1{flex:1}
+    .stack{display:flex;flex-direction:column;gap:8px}
+    .note{font-size:12px;color:var(--muted)}
+    .badge{font-size:11px;background:#0b1220;color:#a0aec0;border:1px solid rgba(148,163,184,.3);border-radius:10px;padding:4px 8px}
+    .logs{height:140px;overflow:auto;white-space:pre-wrap;background:#0b1220;border:1px solid rgba(148,163,184,.3);border-radius:12px;padding:10px}
+    .transcript{min-height:80px}
+    .level{height:8px;border-radius:999px;background:#0b1220;border:1px solid rgba(148,163,184,.25);overflow:hidden}
+    .level > i{display:block;height:100%;width:6%;background:linear-gradient(90deg, rgba(96,165,250,.8), rgba(34,197,94,.8));transition:width .08s ease}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+    .muted{opacity:.8}
+    .footer{margin-top:16px;font-size:12px;color:var(--muted)}
+    .kbd{font-weight:700;border:1px solid rgba(148,163,184,.4);padding:1px 6px;border-radius:6px;background:#0b1220}
+    .ok{color:#22c55e}
+    .err{color:#ef4444}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Simultane Çeviri</div>
+    <div class="subtitle">Telefonunuzda tek dosya <span class="badge">index.html</span> olarak çalışır. Mikrofonu dinler, yazıya döker, seçilen sağlayıcıyla çevirir ve hedef dilde <em>sesli</em> okur.</div>
+
+    <div class="card stack">
+      <div class="row">
+        <div class="stack" style="min-width:220px;flex:1">
+          <label>Çeviri Sağlayıcısı</label>
+          <select id="provider">
+            <option value="none">(Çeviri olmadan – test)</option>
+            <option value="libre">LibreTranslate / uyumlu API</option>
+            <option value="deepl">DeepL API</option>
+            <option value="openai">OpenAI (Chat Completions)</option>
+          </select>
+          <div class="note">Tarayıcıdan doğrudan API çağrısı bazı sağlayıcılarda CORS nedeniyle çalışmayabilir. Gerekirse kendi <span class="mono">/proxy</span> uç noktanızı kullanın.</div>
+        </div>
+        <div class="stack flex-1" id="libreBox" style="display:none">
+          <label>LibreTranslate Uç Noktası</label>
+          <input type="url" id="libreEndpoint" placeholder="https://libretranslate.com/translate" />
+        </div>
+        <div class="stack flex-1" id="deeplBox" style="display:none">
+          <label>DeepL API Anahtarı</label>
+          <input type="password" id="deeplKey" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx" />
+        </div>
+        <div class="stack flex-1" id="openaiBox" style="display:none">
+          <label>OpenAI API Anahtarı</label>
+          <input type="password" id="openaiKey" placeholder="sk-..." />
+        </div>
+      </div>
+      <div class="row">
+        <div class="stack" style="min-width:220px;flex:1">
+          <label>Benim Dilim (Kaynak)</label>
+          <select id="sourceLang"></select>
+        </div>
+        <div class="stack" style="min-width:220px;flex:1">
+          <label>Karşı Tarafın Dili (Hedef)</label>
+          <select id="targetLang"></select>
+        </div>
+        <div class="stack" style="min-width:200px;flex:1">
+          <label>Hedef Ses (Okunacak Ses)</label>
+          <select id="voiceSelect"></select>
+          <div class="note">Ses seçenekleri cihazdaki <em>SpeechSynthesis</em> seslerine göre listelenir.</div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="startBtn" class="primary">▶ Başlat</button>
+        <button id="stopBtn" class="ghost">■ Durdur</button>
+        <button id="flipBtn" class="ghost" title="Kaynak ↔ Hedef dillerini değiştir">↔︎ Dilleri Değiştir</button>
+        <span id="status" class="pill">Hazır</span>
+        <span id="warn" class="pill" style="display:none;background:#0b1220;border-color:#f59e0b;color:#fbbf24">iOS Safari, web'de tanımayı sınırlayabilir</span>
+      </div>
+      <div class="row" style="gap:12px;align-items:center;flex-wrap:wrap;margin-top:6px">
+        <div class="stack" style="min-width:220px">
+          <label>Cümle Algılama</label>
+          <div class="row" style="gap:8px">
+            <label class="pill"><input id="detectPunct" type="checkbox" style="margin-right:6px"/>Noktalama ile</label>
+            <label class="pill"><input id="detectPause" type="checkbox" style="margin-right:6px"/>Duraklama ile</label>
+            <input id="pauseMs" type="range" min="300" max="1500" step="50" value="700" style="width:200px"/>
+            <span class="note" id="pauseLabel">700 ms</span>
+          </div>
+        </div>
+        <div class="stack" style="min-width:220px">
+          <label>Okuma Hızı & Pitch</label>
+          <div class="row" style="gap:8px">
+            <span class="note">Hız</span>
+            <input id="rate" type="range" min="0.5" max="1.8" step="0.1" value="1" style="width:160px"/>
+            <span class="note" id="rateLabel">1.0x</span>
+            <span class="note" style="margin-left:10px">Pitch</span>
+            <input id="pitch" type="range" min="0.5" max="2" step="0.1" value="1" style="width:160px"/>
+            <span class="note" id="pitchLabel">1.0</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="align-items:flex-end">
+        <div class="stack flex-1">
+          <label>Ben Söylerken (Tanıma)</label>
+          <div id="myTranscript" class="logs transcript"></div>
+          <div class="level"><i id="lvl"></i></div>
+          <!-- Elle Giriş -->
+          <div class="stack">
+            <label>Elle Giriş</label>
+            <textarea id="manualInput" class="logs" style="height:68px" placeholder="Elle metin gir (Ctrl/⌘ + Enter ile gönder)"></textarea>
+            <div class="row">
+              <button id="sendManual" class="primary">✍️ Metni Çevir & Oku</button>
+              <span class="note">Kısayol: Ctrl/⌘ + Enter</span>
+            </div>
+          </div>
+          <div class="row">
+            <button id="pttMe" class="ghost" title="Bas-Konuş">🎙️ Bas & Konuş</button>
+            <button id="copyMy" class="ghost">Kopyala</button>
+            <span class="note">Kısa cümleler ve duraklamalar tanımayı hızlandırır.</span>
+          </div>
+        </div>
+        <div class="stack flex-1">
+          <label>Karşı Tarafa Okunan (Çeviri + TTS)</label>
+          <div id="toOther" class="logs transcript"></div>
+          <div class="row">
+            <button id="testSay" class="ghost">🔊 Test Oku</button>
+            <button id="copyOther" class="ghost">Kopyala</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div class="stack" style="max-width:680px">
+          <strong>İki Yönlü (Back‑to‑Back) Mod</strong>
+          <div class="note">Karşı taraf konuşurken ayrı bir butona basıp çevirisini kendi dilinizde dinleyin. Aynı anda iki tanıma oturumu tarayıcılarda çakışabileceği için <em>bas‑konuş</em> yaklaşımı daha kararlıdır.</div>
+        </div>
+        <div><span class="badge">Opsiyonel</span></div>
+      </div>
+
+      <div class="row" style="align-items:flex-end">
+        <div class="stack flex-1">
+          <label>Karşı Kişi Söylerken (Tanıma – Hedef Dilde)</label>
+          <div id="otherTranscript" class="logs transcript"></div>
+          <div class="row">
+            <button id="pttOther" class="ghost">🎙️ Karşı Taraf Konuşsun</button>
+            <button id="copyOtherSrc" class="ghost">Kopyala</button>
+          </div>
+          <!-- Karşı Taraf Elle Giriş -->
+          <div class="stack">
+            <label>Karşı Taraf Elle Giriş</label>
+            <textarea id="manualInputOther" class="logs" style="height:68px" placeholder="Karşı tarafın söylediğini hedef dilde yaz (Ctrl/⌘ + Enter)"></textarea>
+            <div class="row">
+              <button id="sendManualOther" class="primary">✍️ Metni Bana Çevir & Oku</button>
+              <span class="note">Kısayol: Ctrl/⌘ + Enter</span>
+            </div>
+          </div>
+        </div>
+        <div class="stack flex-1">
+          <label>Sana Okunan (Çeviri + TTS)</label>
+          <div id="toMe" class="logs transcript"></div>
+          <div class="row">
+            <button id="testSayMe" class="ghost">🔊 Test Oku</button>
+            <button id="copyToMe" class="ghost">Kopyala</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card stack">
+      <strong>Tanılama / Testler</strong>
+      <div class="note">Aşağıdaki hızlı testler yalnızca tarayıcı tarafında çalışır, API çağrısı yapmaz.</div>
+      <div class="row">
+        <button id="runTests" class="ghost">▶ Self‑Test Çalıştır</button>
+        <span class="note">Sonuçlar: <span id="testSummary" class="mono"></span></span>
+      </div>
+      <textarea id="testLog" class="logs" style="height:120px" readonly></textarea>
+    </div>
+
+    <div class="footer">
+      <div>⚠️ <strong>Gizlilik/Ücret:</strong> Seçtiğiniz API'ye gönderilen metinler sağlayıcınıza iletilir. Mobil tarayıcıda doğrudan anahtar kullanımı için kendi CORS proxy'nizi öneririz.</div>
+      <div>💡 <strong>İpucu:</strong> Ana ekrana ekleyerek (PWA olmadan) hızlı başlatabilirsiniz. Diller ve anahtarlar yerelde saklanır.</div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const $ = (s)=>document.querySelector(s);
+  const $$ = (s)=>Array.from(document.querySelectorAll(s));
+  const els = {
+    provider: $('#provider'), libreBox: $('#libreBox'), deeplBox: $('#deeplBox'), openaiBox: $('#openaiBox'),
+    libreEndpoint: $('#libreEndpoint'), deeplKey: $('#deeplKey'), openaiKey: $('#openaiKey'),
+    sourceLang: $('#sourceLang'), targetLang: $('#targetLang'), voiceSelect: $('#voiceSelect'),
+    startBtn: $('#startBtn'), stopBtn: $('#stopBtn'), flipBtn: $('#flipBtn'), status: $('#status'), warn: $('#warn'),
+    myTranscript: $('#myTranscript'), toOther: $('#toOther'), lvl: $('#lvl'), pttMe: $('#pttMe'), copyMy: $('#copyMy'), copyOther: $('#copyOther'),
+    otherTranscript: $('#otherTranscript'), toMe: $('#toMe'), pttOther: $('#pttOther'), copyOtherSrc: $('#copyOtherSrc'), copyToMe: $('#copyToMe'),
+    testSay: $('#testSay'), testSayMe: $('#testSayMe'),
+    detectPunct: $('#detectPunct'), detectPause: $('#detectPause'), pauseMs: $('#pauseMs'), pauseLabel: $('#pauseLabel'),
+    rate: $('#rate'), pitch: $('#pitch'), rateLabel: $('#rateLabel'), pitchLabel: $('#pitchLabel'),
+    manualInput: $('#manualInput'), sendManual: $('#sendManual'),
+    manualInputOther: $('#manualInputOther'), sendManualOther: $('#sendManualOther'),
+    runTests: $('#runTests'), testLog: $('#testLog'), testSummary: $('#testSummary'),
+  };
+
+  const SUPPORTED_LANGS = [
+    {code:'tr-TR', name:'Türkçe'}, {code:'en-US', name:'İngilizce (ABD)'}, {code:'en-GB', name:'İngilizce (UK)'},
+    {code:'de-DE', name:'Almanca'}, {code:'fr-FR', name:'Fransızca'}, {code:'es-ES', name:'İspanyolca'}, {code:'it-IT', name:'İtalyanca'},
+    {code:'ru-RU', name:'Rusça'}, {code:'ar-SA', name:'Arapça'}, {code:'fa-IR', name:'Farsça'}, {code:'el-GR', name:'Yunanca'},
+    {code:'bg-BG', name:'Bulgarca'}, {code:'ro-RO', name:'Romence'}, {code:'nl-NL', name:'Flemenkçe'}, {code:'pt-PT', name:'Portekizce'},
+    {code:'hi-IN', name:'Hintçe'}, {code:'ja-JP', name:'Japonca'}, {code:'ko-KR', name:'Korece'}, {code:'zh-CN', name:'Çince (Basitleştirilmiş)'}
+  ];
+
+  function fillLangs(){
+    els.sourceLang.innerHTML = SUPPORTED_LANGS.map(l=>`<option value="${l.code}">${l.name}</option>`).join('');
+    els.targetLang.innerHTML = SUPPORTED_LANGS.map(l=>`<option value="${l.code}">${l.name}</option>`).join('');
+    const s = localStorage.getItem('sim-src') || 'tr-TR';
+    const t = localStorage.getItem('sim-tgt') || 'en-US';
+    els.sourceLang.value = s; els.targetLang.value = t;
+  }
+
+  function saveSettings(){
+    localStorage.setItem('sim-provider', els.provider.value);
+    localStorage.setItem('sim-libre', els.libreEndpoint.value||'');
+    localStorage.setItem('sim-deepl', els.deeplKey.value||'');
+    localStorage.setItem('sim-openai', els.openaiKey.value||'');
+    localStorage.setItem('sim-src', els.sourceLang.value);
+    localStorage.setItem('sim-tgt', els.targetLang.value);
+    localStorage.setItem('sim-voice', els.voiceSelect.value||'');
+    localStorage.setItem('sim-detectPunct', els.detectPunct.checked?'1':'0');
+    localStorage.setItem('sim-detectPause', els.detectPause.checked?'1':'0');
+    localStorage.setItem('sim-pauseMs', String(els.pauseMs.value));
+    localStorage.setItem('sim-rate', String(els.rate.value));
+    localStorage.setItem('sim-pitch', String(els.pitch.value));
+  }
+
+  function loadSettings(){
+    els.provider.value = localStorage.getItem('sim-provider') || 'none';
+    els.libreEndpoint.value = localStorage.getItem('sim-libre') || 'https://libretranslate.com/translate';
+    els.deeplKey.value = localStorage.getItem('sim-deepl') || '';
+    els.openaiKey.value = localStorage.getItem('sim-openai') || '';
+    els.detectPunct.checked = (localStorage.getItem('sim-detectPunct')||'1')==='1';
+    els.detectPause.checked = (localStorage.getItem('sim-detectPause')||'0')==='1';
+    els.pauseMs.value = localStorage.getItem('sim-pauseMs') || '700'; els.pauseLabel.textContent = els.pauseMs.value+' ms';
+    els.rate.value = localStorage.getItem('sim-rate') || '1'; els.rateLabel.textContent = Number(els.rate.value).toFixed(1)+'x';
+    els.pitch.value = localStorage.getItem('sim-pitch') || '1'; els.pitchLabel.textContent = Number(els.pitch.value).toFixed(1);
+  }
+
+  function uiProvider(){
+    els.libreBox.style.display = els.provider.value==='libre' ? '' : 'none';
+    els.deeplBox.style.display = els.provider.value==='deepl' ? '' : 'none';
+    els.openaiBox.style.display = els.provider.value==='openai' ? '' : 'none';
+  }
+
+  // Speech Synthesis Voices
+  let voices = [];
+  function populateVoices(){
+    voices = speechSynthesis.getVoices();
+    const options = voices.map(v=>{
+      const label = `${v.name} – ${v.lang}${v.default?' (varsayılan)':''}`;
+      return `<option value="${v.name}" data-lang="${v.lang}">${label}</option>`;
+    }).join('');
+    els.voiceSelect.innerHTML = `<option value="">(Otomatik – hedef dile en yakın)</option>` + options;
+    const saved = localStorage.getItem('sim-voice');
+    if(saved) els.voiceSelect.value = saved;
+  }
+  speechSynthesis.onvoiceschanged = populateVoices;
+
+  // Mic level (simple analyser)
+  let mediaStream, audioCtx, analyser, dataArray;
+  async function setupLevel(){
+    try{
+      mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
+      audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const source = audioCtx.createMediaStreamSource(mediaStream);
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256; dataArray = new Uint8Array(analyser.frequencyBinCount);
+      source.connect(analyser);
+      raf();
+    }catch(err){/* mic level optional */}
+  }
+  function raf(){
+    if(!analyser) return; analyser.getByteFrequencyData(dataArray);
+    const avg = dataArray.reduce((a,b)=>a+b,0)/dataArray.length; // 0..255
+    const w = Math.min(100, Math.max(2, (avg/255)*100));
+    els.lvl.style.width = w+'%';
+    requestAnimationFrame(raf);
+  }
+
+  // Speech Recognition helper
+  function createRecognizer(lang){
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if(!SR) return null;
+    const r = new SR();
+    r.continuous = false; // kısa cümleler, onend ile yeniden başlatıyoruz
+    r.interimResults = true;
+    r.lang = lang;
+    // Tanılama event'leri
+    r.onstart = ()=>{ els.status.textContent = 'Mikrofon dinleniyor…'; };
+    r.onaudiostart = ()=>{ els.status.textContent = 'Ses alınıyor…'; };
+    r.onspeechstart = ()=>{ els.status.textContent = 'Konuşma algılandı'; };
+    r.onspeechend = ()=>{ els.status.textContent = 'Konuşma bitti, işleniyor…'; };
+    r.onaudioend = ()=>{ /* sessizlik */ };
+    r.onerror = (e)=>{
+      const m = e?.error;
+      let hint = '';
+      if(m==='no-speech') hint = 'Mikrofondan ses gelmedi. Mikrofon seçimini kontrol et.';
+      else if(m==='audio-capture') hint = 'Mikrofon bulunamadı/engellendi. Tarayıcı izinlerini kontrol et.';
+      else if(m==='not-allowed') hint = 'İzin verilmedi. Adres çubuğundaki mikrofon simgesinden izin verin.';
+      else if(m==='aborted') hint = 'Oturum sonlandı. Tekrar başlatılıyor…';
+      else hint = 'Hata: '+m;
+      els.status.textContent = 'Hata: '+m;
+      els.testLog.value += `❌ SR hata: ${m} ${hint?('– '+hint):''}
+`;
+    };
+    return r;
+  }
+
+  // Sentence extraction helpers (no-regex to avoid escaping issues)
+  function takeCompleteSentences(buffer){
+    const complete = [];
+    let current = '';
+    const enders = '.!?…';
+    for(const ch of (buffer||'')){
+      current += ch;
+      if(enders.includes(ch)){
+        complete.push(current.trim());
+        current = '';
+      }
+    }
+    return {complete, rest: current.trimStart()};
+  }
+
+  // Translation providers
+  async function translateText(text, from, to){
+    const provider = els.provider.value;
+    if(!text || from===to || provider==='none') return text; // passthrough
+
+    if(provider==='libre'){
+      const ep = (els.libreEndpoint.value||'').trim();
+      const body = {q:text, source: from.split('-')[0], target: to.split('-')[0], format:'text'};
+      const res = await fetch(ep,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      if(!res.ok) throw new Error('LibreTranslate hata: '+res.status);
+      const js = await res.json();
+      return js.translatedText || js.translation || text;
+    }
+
+    if(provider==='deepl'){
+      const key = (els.deeplKey.value||'').trim();
+      const res = await fetch('https://api-free.deepl.com/v2/translate',{method:'POST',headers:{'Authorization':'DeepL-Auth-Key '+key,'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({text:text, target_lang: to.split('-')[0].toUpperCase()})});
+      if(!res.ok) throw new Error('DeepL hata: '+res.status);
+      const js = await res.json();
+      return (js.translations && js.translations[0] && js.translations[0].text) || text;
+    }
+
+    if(provider==='openai'){
+      const key = (els.openaiKey.value||'').trim();
+      const payload = {
+        model: 'gpt-4o-mini',
+        messages: [
+          {role:'system', content:'You are a translation engine. Translate the user input preserving meaning and tone. Output only the translated text.'},
+          {role:'user', content:`From ${from} to ${to}. Text: ${text}`}
+        ],
+        temperature: 0.2
+      };
+      const res = await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify(payload)});
+      if(!res.ok) throw new Error('OpenAI hata: '+res.status);
+      const js = await res.json();
+      const out = js.choices?.[0]?.message?.content?.trim();
+      return out || text;
+    }
+
+    return text;
+  }
+
+  // TTS (kuyruk + tekrar engelleme)
+  function makeUtterance(text, targetLang){
+    const u = new SpeechSynthesisUtterance(text);
+    const pickedName = els.voiceSelect.value;
+    if(pickedName){
+      const v = speechSynthesis.getVoices().find(v=>v.name===pickedName); if(v) u.voice = v;
+    } else {
+      const pref = targetLang.split('-')[0];
+      const v = speechSynthesis.getVoices().find(v=>v.lang && v.lang.toLowerCase().startsWith(pref)); if(v) u.voice = v;
+    }
+    u.lang = (u.voice?.lang)||targetLang;
+    u.rate = parseFloat(els.rate.value||'1');
+    u.pitch = parseFloat(els.pitch.value||'1');
+    return u;
+  }
+  const tts = { queue: [], busy: false, recent: new Map(), last: { toOther: '', toMe: '' } };
+  function processTTS(){
+    if(tts.busy) return; const job = tts.queue.shift(); if(!job) return;
+    tts.busy = true;
+    const u = makeUtterance(job.text, job.lang);
+    u.onend = u.onerror = ()=>{ tts.busy = false; processTTS(); };
+    speechSynthesis.speak(u);
+  }
+  function speakOnce(slot, text, lang){
+    const norm = (text||'').trim(); if(!norm) return;
+    if(tts.last && tts.last[slot] === norm) return; // aynı metni anında tekrar okuma
+    const key = slot+'|'+norm;
+    const now = Date.now(); const last = tts.recent.get(key)||0;
+    if(now - last < 8000) return; // 8sn pencerede tekrar okuma
+    tts.recent.set(key, now);
+    tts.last[slot] = norm;
+    tts.queue.push({text: norm, lang});
+    processTTS();
+  }
+
+  // Me -> Other
+  let recMe = null, activeMe = false, lastChunkMe = '';
+  let bufferMe = '', pauseTimerMe = null;
+  function startMe(){
+    if(activeMe) return; activeMe = true; els.status.textContent = 'Dinleniyor…';
+    const lang = els.sourceLang.value;
+    recMe = createRecognizer(lang);
+    if(!recMe){
+      els.status.textContent='Konuşma Tanıma desteklenmiyor';
+      const ua = navigator.userAgent;
+      els.testLog.value += `❌ SR yok. Tarayıcı: ${ua}
+`;
+      alert('Bu tarayıcıda Web Speech Recognition yok. Lütfen Chrome veya Edge kullanın.');
+      activeMe = false; return;
+    }
+    recMe.onresult = async (ev)=>{
+      let interim=''; let final='';
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        const res = ev.results[i];
+        const txt = (res[0].transcript||'').trim();
+        if(res.isFinal){ final += txt + ' '; } else { interim += txt + ' '; }
+      }
+      const combined = (final + (interim?(' '+interim):'')).trim();
+      els.myTranscript.textContent = combined;
+
+      const usePunct = els.detectPunct?.checked;
+      const usePause = els.detectPause?.checked;
+      const ms = parseInt(els.pauseMs?.value||'700',10);
+
+      if(usePunct){
+        bufferMe += (final?final+' ':'');
+        const parts = takeCompleteSentences(bufferMe);
+        if(parts.complete.length){
+          for(const sentence of parts.complete){
+            if(sentence && sentence !== lastChunkMe){
+              lastChunkMe = sentence;
+              try{
+                const out = await translateText(sentence, els.sourceLang.value, els.targetLang.value);
+                els.toOther.textContent = (els.toOther.textContent ? (els.toOther.textContent + ' ') : '') + out;
+                speakOnce('toOther', out, els.targetLang.value);
+              }catch(err){ els.toOther.textContent = (els.toOther.textContent||'') + ` [çeviri hatası: ${err.message}]`; }
+            }
+          }
+          bufferMe = parts.rest + ' ';
+        }
+      } else if(usePause){
+        bufferMe += (interim?interim+' ':'') + (final?final+' ':'');
+        if(pauseTimerMe) clearTimeout(pauseTimerMe);
+        if(bufferMe.trim()){
+          pauseTimerMe = setTimeout(async ()=>{
+            const chunk = bufferMe.trim(); bufferMe='';
+            if(chunk && chunk !== lastChunkMe){
+              lastChunkMe = chunk;
+              try{
+                const out = await translateText(chunk, els.sourceLang.value, els.targetLang.value);
+                els.toOther.textContent = (els.toOther.textContent ? (els.toOther.textContent + ' ') : '') + out;
+                speakOnce('toOther', out, els.targetLang.value);
+              }catch(err){ els.toOther.textContent = (els.toOther.textContent||'') + ` [çeviri hatası: ${err.message}]`; }
+            }
+          }, ms);
+        }
+      } else {
+        if(final){
+          const chunk = final.trim();
+          if(chunk && chunk !== lastChunkMe){
+            lastChunkMe = chunk;
+            try{
+              const out = await translateText(chunk, els.sourceLang.value, els.targetLang.value);
+              els.toOther.textContent = (els.toOther.textContent ? (els.toOther.textContent + ' ') : '') + out;
+              speakOnce('toOther', out, els.targetLang.value);
+            }catch(err){ els.toOther.textContent = (els.toOther.textContent||'') + ` [çeviri hatası: ${err.message}]`; }
+          }
+        }
+      }
+    };
+    recMe.onend = ()=>{ if(activeMe){ try{ recMe.start(); }catch(e){} } };
+    try{ recMe.start(); }catch(e){}
+  }
+  function stopMe(){
+    activeMe=false;
+    try{ if(recMe) recMe.stop(); }catch(e){}
+    els.status.textContent='Durdu';
+    lastChunkMe=''; bufferMe=''; if(pauseTimerMe) clearTimeout(pauseTimerMe);
+    if(tts){ tts.recent = new Map(); if(tts.last){ tts.last.toOther=''; } }
+  }
+
+  // Other -> Me
+  let recOther=null, activeOther=false, lastChunkOther='';
+  let bufferOther='', pauseTimerOther=null;
+  function startOther(){
+    if(activeOther) return; activeOther=true;
+    const lang = els.targetLang.value;
+    recOther = createRecognizer(lang);
+    if(!recOther){ alert('Konuşma Tanıma desteklenmiyor.'); activeOther=false; return; }
+    recOther.onresult = async (ev)=>{
+      let interim=''; let final='';
+      for(let i=ev.resultIndex;i<ev.results.length;i++){
+        const res = ev.results[i];
+        const txt = (res[0].transcript||'').trim();
+        if(res.isFinal){ final += txt + ' '; } else { interim += txt + ' '; }
+      }
+      const combined = (final + (interim?(' '+interim):'')).trim();
+      els.otherTranscript.textContent = combined;
+
+      const usePunct = els.detectPunct?.checked;
+      const usePause = els.detectPause?.checked;
+      const ms = parseInt(els.pauseMs?.value||'700',10);
+
+      if(usePunct){
+        bufferOther += (final?final+' ':'');
+        const parts = takeCompleteSentences(bufferOther);
+        if(parts.complete.length){
+          for(const sentence of parts.complete){
+            if(sentence && sentence !== lastChunkOther){
+              lastChunkOther = sentence;
+              try{
+                const out = await translateText(sentence, els.targetLang.value, els.sourceLang.value);
+                els.toMe.textContent = (els.toMe.textContent ? (els.toMe.textContent + ' ') : '') + out;
+                speakOnce('toMe', out, els.sourceLang.value);
+              }catch(err){ els.toMe.textContent = (els.toMe.textContent||'') + ` [çeviri hatası: ${err.message}]`; }
+            }
+          }
+          bufferOther = parts.rest + ' ';
+        }
+      } else if(usePause){
+        bufferOther += (interim?interim+' ':'') + (final?final+' ':'');
+        if(pauseTimerOther) clearTimeout(pauseTimerOther);
+        if(bufferOther.trim()){
+          pauseTimerOther = setTimeout(async ()=>{
+            const chunk = bufferOther.trim(); bufferOther='';
+            if(chunk && chunk !== lastChunkOther){
+              lastChunkOther = chunk;
+              try{
+                const out = await translateText(chunk, els.targetLang.value, els.sourceLang.value);
+                els.toMe.textContent = (els.toMe.textContent ? (els.toMe.textContent + ' ') : '') + out;
+                speakOnce('toMe', out, els.sourceLang.value);
+              }catch(err){ els.toMe.textContent = (els.toMe.textContent||'') + ` [çeviri hatası: ${err.message}]`; }
+            }
+          }, ms);
+        }
+      } else {
+        if(final){
+          const chunk = final.trim();
+          if(chunk && chunk !== lastChunkOther){
+            lastChunkOther = chunk;
+            try{
+              const out = await translateText(chunk, els.targetLang.value, els.sourceLang.value);
+              els.toMe.textContent = (els.toMe.textContent ? (els.toMe.textContent + ' ') : '') + out;
+              speakOnce('toMe', out, els.sourceLang.value);
+            }catch(err){ els.toMe.textContent = (els.toMe.textContent||'') + ` [çeviri hatası: ${err.message}]`; }
+          }
+        }
+      }
+    };
+    recOther.onend = ()=>{ if(activeOther){ try{ recOther.start(); }catch(e){} } };
+    try{ recOther.start(); }catch(e){}
+  }
+  function stopOther(){
+    activeOther = false;
+    try { if(recOther) recOther.stop(); } catch(e){}
+    lastChunkOther = ''; bufferOther = ''; if (pauseTimerOther) clearTimeout(pauseTimerOther);
+    if(tts && tts.last){ tts.last.toMe=''; }
+  }
+
+  // PTT (Bas-Konuş)
+  els.pttMe.addEventListener('mousedown', ()=>{ startMe(); });
+  els.pttMe.addEventListener('mouseup',   ()=>{ stopMe(); });
+  els.pttMe.addEventListener('touchstart',(e)=>{ e.preventDefault(); startMe(); });
+  els.pttMe.addEventListener('touchend',  (e)=>{ e.preventDefault(); stopMe(); });
+
+  els.pttOther.addEventListener('mousedown', ()=>{ startOther(); });
+  els.pttOther.addEventListener('mouseup',   ()=>{ stopOther(); });
+  els.pttOther.addEventListener('touchstart',(e)=>{ e.preventDefault(); startOther(); });
+  els.pttOther.addEventListener('touchend',  (e)=>{ e.preventDefault(); stopOther(); });
+
+  // Buttons
+  els.startBtn.onclick = ()=>{ saveSettings(); startMe(); };
+  els.stopBtn.onclick  = ()=>{ stopMe(); stopOther(); };
+  els.flipBtn.onclick  = ()=>{ const s=els.sourceLang.value, t=els.targetLang.value; els.sourceLang.value=t; els.targetLang.value=s; saveSettings(); };
+  els.testSay.onclick  = ()=>{ speakOnce('toOther','Hello! This is a test voice for the other side.', els.targetLang.value); };
+  els.testSayMe.onclick= ()=>{ speakOnce('toMe','Merhaba! Bu ses denemesidir.', els.sourceLang.value); };
+
+  // Elle giriş
+  async function handleManualSend(){ const text=(els.manualInput.value||'').trim(); if(!text) return; els.myTranscript.textContent=(els.myTranscript.textContent?els.myTranscript.textContent+' ':'')+text; try{ const out=await translateText(text, els.sourceLang.value, els.targetLang.value); els.toOther.textContent=(els.toOther.textContent?els.toOther.textContent+' ':'')+out; speakOnce('toOther', out, els.targetLang.value);}catch(e){ els.toOther.textContent+=(els.toOther.textContent?' ':'')+'[çeviri hatası]'; } els.manualInput.value=''; }
+  els.sendManual.onclick = handleManualSend;
+  els.manualInput.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); handleManualSend(); }});
+
+  async function handleManualSendOther(){ const text=(els.manualInputOther.value||'').trim(); if(!text) return; els.otherTranscript.textContent=(els.otherTranscript.textContent?els.otherTranscript.textContent+' ':'')+text; try{ const out=await translateText(text, els.targetLang.value, els.sourceLang.value); els.toMe.textContent=(els.toMe.textContent?els.toMe.textContent+' ':'')+out; speakOnce('toMe', out, els.sourceLang.value);}catch(e){ els.toMe.textContent+=(els.toMe.textContent?' ':'')+'[çeviri hatası]'; } els.manualInputOther.value=''; }
+  els.sendManualOther.onclick = handleManualSendOther;
+  els.manualInputOther.addEventListener('keydown',(e)=>{ if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){ e.preventDefault(); handleManualSendOther(); }});
+
+  // Copy helpers
+  function copyText(sel){ const t=document.querySelector(sel)?.textContent||''; navigator.clipboard?.writeText(t); }
+  els.copyMy.onclick=()=>copyText('#myTranscript');
+  els.copyOther.onclick=()=>copyText('#toOther');
+  els.copyOtherSrc.onclick=()=>copyText('#otherTranscript');
+  els.copyToMe.onclick=()=>copyText('#toMe');
+
+  // Provider UI + ayarlar
+  els.provider.onchange = ()=>{ uiProvider(); saveSettings(); };
+  ;['libreEndpoint','deeplKey','openaiKey'].forEach(id=>{ els[id]?.addEventListener('change', saveSettings); els[id]?.addEventListener('blur', saveSettings); });
+  els.sourceLang.onchange=saveSettings; els.targetLang.onchange=saveSettings; els.voiceSelect.onchange=saveSettings;
+  els.pauseMs.oninput = ()=>{ els.pauseLabel.textContent = els.pauseMs.value+' ms'; saveSettings(); };
+  els.detectPunct.onchange=()=>{ if(els.detectPunct.checked){ els.detectPause.checked=false; } saveSettings(); };
+  els.detectPause.onchange=()=>{ if(els.detectPause.checked){ els.detectPunct.checked=false; } saveSettings(); };
+  els.rate.oninput = ()=>{ els.rateLabel.textContent = Number(els.rate.value).toFixed(1)+'x'; saveSettings(); };
+  els.pitch.oninput= ()=>{ els.pitchLabel.textContent= Number(els.pitch.value).toFixed(1); saveSettings(); };
+
+  // Init
+  fillLangs(); loadSettings(); uiProvider(); populateVoices(); setupLevel();
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+  if(isIOS) els.warn.style.display='inline-flex';
+
+  // ---- Basit Self Tests ----
+  function logOk(msg){ els.testLog.value += `✅ ${msg}\n`; }
+  function logErr(msg){ els.testLog.value += `❌ ${msg}\n`; }
+  function setSummary(){ const lines = els.testLog.value.trim().split(/\n/).filter(Boolean); const ok=lines.filter(l=>l.startsWith('✅')).length; const bad=lines.filter(l=>l.startsWith('❌')).length; els.testSummary.textContent = `${ok} OK, ${bad} Hata`; els.testSummary.className = bad? 'err':'ok'; }
+  async function runSelfTests(){
+    els.testLog.value='';
+    try{ if(typeof startMe==='function' && typeof stopMe==='function') logOk('startMe/stopMe tanımlı'); else logErr('startMe/stopMe yok'); }catch(e){ logErr('startMe/stopMe erişilemedi'); }
+    try{ if(typeof speakOnce==='function') logOk('speakOnce var'); else logErr('speakOnce yok'); }catch(e){ logErr('speakOnce erişilemedi'); }
+    try{ const pWas=els.provider.value; els.provider.value='none'; const out=await translateText('merhaba','tr-TR','en-US'); if(out==='merhaba') logOk('provider=none passthrough'); else logErr('passthrough başarısız'); els.provider.value=pWas; }catch(e){ logErr('translateText test çalışmadı'); }
+    try{ const old = tts.recent.size; speakOnce('toOther','TEST', 'en-US'); const size1 = tts.queue.length; speakOnce('toOther','TEST', 'en-US'); const size2 = tts.queue.length; if(size2===size1) logOk('TTS dedupe çalışıyor'); else logErr('TTS dedupe çalışmıyor'); }catch(e){ logErr('TTS kuyruğu test edilemedi'); }
+    setSummary();
+  }
+  els.runTests.onclick = runSelfTests;
+})();
+</script>
+</body>
+</html>
